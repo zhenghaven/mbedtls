@@ -2,6 +2,7 @@ option(USE_STATIC_MBEDTLS_LIBRARY "Build mbed TLS static library." ON)
 option(USE_SHARED_MBEDTLS_LIBRARY "Build mbed TLS shared library." OFF)
 option(LINK_WITH_PTHREAD "Explicitly link mbed TLS library to pthread." OFF)
 option(LINK_WITH_TRUSTED_STORAGE "Explicitly link mbed TLS library to trusted_storage." OFF)
+option(ENABLE_ENCLAVE_TARGETS "Add additional targets for enclave programming." ON)
 
 # Set the project root directory if it's not already defined, as may happen if
 # the library folder is included directly by a parent project, without
@@ -162,6 +163,14 @@ elseif(USE_STATIC_MBEDTLS_LIBRARY)
     set(mbedcrypto_static_target "mbedcrypto")
 endif()
 
+if(ENABLE_ENCLAVE_TARGETS)
+    set(mbedtls_static_target_enclave "mbedtls_enclave")
+    set(mbedx509_static_target_enclave "mbedx509_enclave")
+    set(mbedcrypto_static_target_enclave "mbedcrypto_enclave")
+    list(APPEND target_libraries
+        "mbedcrypto_enclave" "mbedx509_enclave" "mbedtls_enclave")
+endif(ENABLE_ENCLAVE_TARGETS)
+
 if(USE_STATIC_MBEDTLS_LIBRARY)
     add_library(${mbedcrypto_static_target} STATIC ${src_crypto})
     set_target_properties(${mbedcrypto_static_target} PROPERTIES OUTPUT_NAME mbedcrypto)
@@ -175,6 +184,20 @@ if(USE_STATIC_MBEDTLS_LIBRARY)
     set_target_properties(${mbedtls_static_target} PROPERTIES OUTPUT_NAME mbedtls)
     target_link_libraries(${mbedtls_static_target} ${libs} ${mbedx509_static_target})
 endif(USE_STATIC_MBEDTLS_LIBRARY)
+
+if(ENABLE_ENCLAVE_TARGETS)
+    add_library(${mbedcrypto_static_target_enclave} STATIC ${src_crypto})
+    set_target_properties(${mbedcrypto_static_target_enclave} PROPERTIES OUTPUT_NAME mbedcrypto_enclave)
+    target_link_libraries(${mbedcrypto_static_target_enclave} ${libs})
+
+    add_library(${mbedx509_static_target_enclave} STATIC ${src_x509})
+    set_target_properties(${mbedx509_static_target_enclave} PROPERTIES OUTPUT_NAME mbedx509_enclave)
+    target_link_libraries(${mbedx509_static_target_enclave} ${libs} ${mbedcrypto_static_target_enclave})
+
+    add_library(${mbedtls_static_target_enclave} STATIC ${src_tls})
+    set_target_properties(${mbedtls_static_target_enclave} PROPERTIES OUTPUT_NAME mbedtls_enclave)
+    target_link_libraries(${mbedtls_static_target_enclave} ${libs} ${mbedx509_static_target_enclave})
+endif(ENABLE_ENCLAVE_TARGETS)
 
 if(USE_SHARED_MBEDTLS_LIBRARY)
     add_library(mbedcrypto SHARED ${src_crypto})
@@ -197,12 +220,15 @@ foreach(target IN LISTS target_libraries)
     # /library needs to be listed explicitly when building .c files outside
     # of /library (which currently means: under /3rdparty).
     target_include_directories(${target}
-        PUBLIC ${MBEDTLS_DIR}/include/
+        PUBLIC $<BUILD_INTERFACE:${MBEDTLS_DIR}/include/>
+        PUBLIC $<INSTALL_INTERFACE:include/mbedtls>
         PUBLIC ${thirdparty_inc_public}
         PRIVATE ${MBEDTLS_DIR}/library/
         PRIVATE ${thirdparty_inc})
     target_compile_definitions(${target}
         PRIVATE ${thirdparty_def})
+    set_target_properties(${target}
+        PROPERTIES FOLDER "mbedTLS")
     install(TARGETS ${target}
             DESTINATION ${LIB_INSTALL_DIR}
             PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ)
